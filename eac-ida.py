@@ -21,6 +21,8 @@ fltmgr_pdbpath = r"C:\Windows\SYMBOLS\fltMgr.pdb\83BB2BA7D753BA4755EA363DD756773
 fltmgr_imagebase = 0xFFFFF80282010000
 fltmgr_imagesize = 0x0007A000
 
+decryptfn_address = 0xFFFFF802EA115638
+
 regs_iu = {
 	idautils.procregs.rax.reg: UC_X86_REG_RAX,
 	idautils.procregs.rcx.reg: UC_X86_REG_RCX,
@@ -76,10 +78,10 @@ class symbols_c:
 			if sym:
 				self.syms.append([sym, s[1], s[2]])
 
-	def lookup(address):
-		for sym in syms:
+	def lookup(self, address):
+		for sym in self.syms:
 			if address >= sym[1] and address <= (sym[1] + sym[2]):
-				name = sym[0].lookup(Address)
+				name = sym[0].lookup(address)
 				if name == "unknown":
 					return None
 				return name
@@ -96,9 +98,8 @@ class eac_parser_c:
 		self.imagesize = last_segment.end_ea - self.imagebase
 
 		self.uc = unicorn_c(self.imagebase, self.imagesize)
-		self.sym = symbols_c([[ntoskrnl_pdbpath, ntoskrnl_imagebase, ntoskrnl_imagesize], [fltmgr_pdbpath, fltmgr_imagebase, fltmgr_imagesize]])
 
-		print("imagesize: 0x%X, imagesize: 0x%X" % (self.imagebase, self.imagesize))
+		#print("imagesize: 0x%X, imagesize: 0x%X" % (self.imagebase, self.imagesize))
 
 class eac_obffuncs_parser_c(eac_parser_c):
 	current_fn = 0
@@ -240,8 +241,94 @@ class eac_obffuncs_parser_c(eac_parser_c):
 			set_cmt(enter_fn, "First block: 0x%X (Total: %i)" % (self.first_block, len(self.parsed_blocks)))
 			print("Function 0x%X / First block: 0x%X (Total: %i)" % (enter_fn, self.first_block, len(self.parsed_blocks)))
 
+class eac_imports_parser_c(eac_parser_c, symbols_c):
+	parsed_keys = {}
+	parse_type = 0
+	key_address = 0
+	trace_start_address = 0
+
+	def __init__(self):
+		eac_parser_c.__init__(self)
+		symbols_c.__init__(self, [[ntoskrnl_pdbpath, ntoskrnl_imagebase, ntoskrnl_imagesize], [fltmgr_pdbpath, fltmgr_imagebase, fltmgr_imagesize]])
+
+		self.parse()
+
+	def hook_code(self, uc, address, size, user_data):
+		if self.parse_type == 0:
+			if address >= self.trace_start_address and address <= (self.trace_start_address + 0xFF):
+				regs = [uc.reg_read(UC_X86_REG_RAX), uc.reg_read(UC_X86_REG_RDX)]
+				for reg in regs:
+					if (reg >> 48) == 0xFFFF and not(reg >= self.imagebase and reg <= self.imagebase + self.imagesize):
+						self.parsed_keys[self.key_address] = self.lookup(reg)
+						uc.reg_write(UC_X86_REG_RIP, 0)
+						return
+		elif self.parse_type == 1:
+			pass
+
+	def parse_call(self, address):
+		self.parse_type = 0
+		self.key_address = 0
+
+		address_t = address
+		for _ in range(10):
+			insn = ida_ua.insn_t()
+			address_t = ida_ua.decode_prev_insn(insn, address_t)
+			if address_t == ida_idaapi.BADADDR:
+				break
+
+			if insn.itype == ida_allins.NN_lea and insn.Op1.reg == idautils.procregs.rcx.reg and insn.Op2.type == ida_ua.o_mem:
+				self.key_address = insn.Op2.addr
+				break
+
+		if self.key_address == 0:
+			return False
+
+		if self.key_address in self.parsed_keys:
+			set_cmt(address, "%s (0x%X)" % (self.parsed_keys[self.key_address], self.key_address))
+			return True
+
+		self.trace_start_address = address + ida_bytes.get_item_size(address)
+
+		self.uc.uc.reg_write(UC_X86_REG_RCX, self.key_address)
+
+		try:
+			self.uc.emu_start(address, 0)
+		except UcError as e:
+			pass
+
+		if self.key_address in self.parsed_keys:
+			set_cmt(address, "%s (0x%X)" % (self.parsed_keys[self.key_address], self.key_address))
+
+			set_cmt(self.key_address, "%s (0x%X)" % (self.parsed_keys[self.key_address], self.key_address))
+			ida_name.set_name(self.key_address, self.parsed_keys[self.key_address], ida_name.SN_NOCHECK | ida_name.SN_NOWARN)
+
+			print("Import %s / Key: 0x%X (Type: 1)" % (self.parsed_keys[self.key_address], self.key_address))
+
+			return True
+
+	def parse_lea(self, address):
+		self.parse_type = 1
+
+	def parse(self):
+		self.uc.uc.hook_add(UC_HOOK_CODE, self.hook_code)
+
+		xref = ida_xref.get_first_cref_to(decryptfn_address)
+		while xref != ida_idaapi.BADADDR:
+			insn = ida_ua.insn_t()
+			ida_ua.decode_insn(insn, xref)
+
+			self.trace_start_address = 0
+
+			if insn.itype == ida_allins.NN_call:
+				self.parse_call(xref)
+			elif insn.itype == ida_allins.NN_lea:
+				self.parse_lea(xref)
+
+			xref = ida_xref.get_next_cref_to(decryptfn_address, xref)
+
 def main():
 	eac_obffuncs_parser_c()
+	eac_imports_parser_c()
 
 if __name__ == "__main__":
 	main()
