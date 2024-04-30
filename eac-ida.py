@@ -40,7 +40,7 @@ regs_iu = {
 	idautils.procregs.r15.reg: UC_X86_REG_R15,
 }
 
-def set_cmt(ea, comm, rptble):
+def set_cmt(ea, comm, rptble = False):
 	ida_bytes.create_byte(ea, 1, True) 
 	ida_ua.create_insn(ea)
 	ida_bytes.set_cmt(ea, comm, rptble)
@@ -118,7 +118,7 @@ class eac_obffuncs_parser_c(eac_parser_c):
 		insns = []
 		child_offsets = []
 
-		set_cmt(address, "Basic block start", False)
+		set_cmt(address, "Basic block start")
 
 		locked = True
 		address_t = address
@@ -136,7 +136,7 @@ class eac_obffuncs_parser_c(eac_parser_c):
 
 			insns.append(insn)
 			if insn.itype == ida_allins.NN_jmp or insn.itype == ida_allins.NN_retn:
-				set_cmt(insn.ea, "Basic block end", False)
+				set_cmt(insn.ea, "Basic block end")
 				break
 			
 		for insn in reversed(insns):
@@ -158,7 +158,7 @@ class eac_obffuncs_parser_c(eac_parser_c):
 	def parse_blocks(self, offsets):
 		for offset in offsets:
 			address = (self.base_address + offset[1]) & 0xFFFFFFFFFFFFFFFF
-			set_cmt(offset[0], "Jump to 0x%X" % address, False)
+			set_cmt(offset[0], "Jump to 0x%X" % address)
 
 			if address in self.parsed_blocks:
 				continue
@@ -190,12 +190,14 @@ class eac_obffuncs_parser_c(eac_parser_c):
 		ida_bytes.create_byte(address, 1, True) 
 		ida_ua.create_insn(address)
 
-		if self.is_cf_handler(address):
-			self.cf_handler = address
-			self.first_block = (self.base_address + uc.reg_read(regs_iu[self.offset_reg])) & 0xFFFFFFFFFFFFFFFF
-			uc.reg_write(UC_X86_REG_RIP, 0)
+		if self.blocks_count == 3:
+			if self.is_cf_handler(address):
+				self.cf_handler = address
+				self.first_block = (self.base_address + uc.reg_read(regs_iu[self.offset_reg])) & 0xFFFFFFFFFFFFFFFF
+			else:
+				set_cmt(self.current_fn, "First block: 0x%X (Unknown control flow)" % address)
+				print("Function 0x%X / First block: 0x%X (Unknown control flow)" % (self.current_fn, address))
 
-		if self.blocks_count > 3:
 			uc.reg_write(UC_X86_REG_RIP, 0)
 
 		self.blocks_count += 1
@@ -223,6 +225,7 @@ class eac_obffuncs_parser_c(eac_parser_c):
 
 			ida_bytes.create_byte(enter_fn, 1, True) 
 			ida_ua.create_insn(enter_fn)
+			#ida_funcs.add_func(enter_fn)
 
 			try:
 				self.uc.emu_start(enter_fn, 0)
@@ -234,7 +237,7 @@ class eac_obffuncs_parser_c(eac_parser_c):
 
 			self.parse_blocks(self.parse_block(self.first_block))
 
-			set_cmt(enter_fn, "First block: 0x%X (Total: %i)" % (self.first_block, len(self.parsed_blocks)), False)
+			set_cmt(enter_fn, "First block: 0x%X (Total: %i)" % (self.first_block, len(self.parsed_blocks)))
 			print("Function 0x%X / First block: 0x%X (Total: %i)" % (enter_fn, self.first_block, len(self.parsed_blocks)))
 
 def main():
