@@ -42,10 +42,11 @@ regs_iu = {
 	idautils.procregs.r15.reg: UC_X86_REG_R15,
 }
 
-def set_cmt(ea, comm, rptble = False):
-	ida_bytes.create_byte(ea, 1, True) 
-	ida_ua.create_insn(ea)
-	ida_bytes.set_cmt(ea, comm, rptble)
+def set_cmt(ea, comm, code = True):
+	ida_bytes.create_byte(ea, 1, True)
+	if code:
+		ida_ua.create_insn(ea)
+	ida_bytes.set_cmt(ea, comm, False)
 
 class unicorn_c:
 	uc = None
@@ -83,9 +84,9 @@ class symbols_c:
 			if address >= sym[1] and address <= (sym[1] + sym[2]):
 				name = sym[0].lookup(address)
 				if name == "unknown":
-					return None
+					return "Unknown 0x%X" % address
 				return name
-		return None
+		return "Unknown 0x%X" % address
 
 class eac_parser_c:
 	imagebase, imagesize = 0, 0
@@ -101,7 +102,7 @@ class eac_parser_c:
 
 		#print("imagesize: 0x%X, imagesize: 0x%X" % (self.imagebase, self.imagesize))
 
-class eac_obffuncs_parser_c(eac_parser_c):
+class eac_funcs_parser_c(eac_parser_c):
 	current_fn = 0
 	blocks_count = 0
 	base_address = 0
@@ -254,16 +255,13 @@ class eac_imports_parser_c(eac_parser_c, symbols_c):
 		self.parse()
 
 	def hook_code(self, uc, address, size, user_data):
-		if self.parse_type == 0:
-			if address >= self.trace_start_address and address <= (self.trace_start_address + 0xFF):
-				regs = [uc.reg_read(UC_X86_REG_RAX), uc.reg_read(UC_X86_REG_RDX)]
-				for reg in regs:
-					if (reg >> 48) == 0xFFFF and not(reg >= self.imagebase and reg <= self.imagebase + self.imagesize):
-						self.parsed_keys[self.key_address] = self.lookup(reg)
-						uc.reg_write(UC_X86_REG_RIP, 0)
-						return
-		elif self.parse_type == 1:
-			pass
+		if address >= self.trace_start_address and address <= (self.trace_start_address + 0xFF):
+			regs = [uc.reg_read(UC_X86_REG_RAX), uc.reg_read(UC_X86_REG_RDX)]
+			for reg in regs:
+				if (reg >> 48) == 0xFFFF and not(reg >= self.imagebase and reg <= self.imagebase + self.imagesize):
+					self.parsed_keys[self.key_address] = [self.lookup(reg), reg]
+					uc.reg_write(UC_X86_REG_RIP, 0)
+					return
 
 	def parse_call(self, address):
 		self.parse_type = 0
@@ -284,7 +282,7 @@ class eac_imports_parser_c(eac_parser_c, symbols_c):
 			return False
 
 		if self.key_address in self.parsed_keys:
-			set_cmt(address, "%s (0x%X)" % (self.parsed_keys[self.key_address], self.key_address))
+			set_cmt(address, "%s (0x%X)" % (self.parsed_keys[self.key_address][0], self.key_address))
 			return True
 
 		self.trace_start_address = address + ida_bytes.get_item_size(address)
@@ -297,17 +295,98 @@ class eac_imports_parser_c(eac_parser_c, symbols_c):
 			pass
 
 		if self.key_address in self.parsed_keys:
-			set_cmt(address, "%s (0x%X)" % (self.parsed_keys[self.key_address], self.key_address))
+			set_cmt(address, "%s (0x%X)" % (self.parsed_keys[self.key_address][0], self.key_address))
 
-			set_cmt(self.key_address, "%s (0x%X)" % (self.parsed_keys[self.key_address], self.key_address))
-			ida_name.set_name(self.key_address, self.parsed_keys[self.key_address], ida_name.SN_NOCHECK | ida_name.SN_NOWARN)
+			set_cmt(self.key_address, "%s (Value: 0x%X)" % (self.parsed_keys[self.key_address][0], self.parsed_keys[self.key_address][1]), False)
+			ida_name.set_name(self.key_address, self.parsed_keys[self.key_address][0], ida_name.SN_NOCHECK | ida_name.SN_NOWARN)
 
-			print("Import %s / Key: 0x%X (Type: 1)" % (self.parsed_keys[self.key_address], self.key_address))
+			print("Import %s / Key: 0x%X (Type: 1)" % (self.parsed_keys[self.key_address][0], self.key_address))
 
 			return True
 
 	def parse_lea(self, address):
 		self.parse_type = 1
+
+		start_address = 0
+
+		address_t = address
+		for _ in range(10):
+			insn = ida_ua.insn_t()
+			size = ida_ua.decode_insn(insn, address_t)
+			if size == 0:
+				break
+
+			if insn.itype == ida_allins.NN_callni and (insn.Op1.type == ida_ua.o_displ or insn.Op1.type == ida_ua.o_phrase):
+				start_address = address_t
+				self.trace_start_address = address_t + size
+				break
+
+			address_t += size
+
+		if self.trace_start_address == 0:
+			return False
+
+		address_resolved = False
+
+		address_t = self.trace_start_address
+		for _ in range(20):
+			insn = ida_ua.insn_t()
+			address_t = ida_ua.decode_prev_insn(insn, address_t)
+			if address_t == ida_idaapi.BADADDR:
+				break
+
+			if insn.itype == ida_allins.NN_lea and insn.Op1.reg == idautils.procregs.rcx.reg and insn.Op2.type == ida_ua.o_mem:
+				self.key_address = insn.Op2.addr
+				break		
+			elif insn.itype == ida_allins.NN_mov and insn.Op1.reg == idautils.procregs.rcx.reg and insn.Op2.type == ida_ua.o_reg:
+				rcx_address = insn.ea + insn.size
+
+				address_r = rcx_address
+				for _ in range(10):
+					insn_r = ida_ua.insn_t()
+					address_r = ida_ua.decode_prev_insn(insn_r, address_r)
+					if address_r == ida_idaapi.BADADDR:
+						break
+
+					if insn_r.itype == ida_allins.NN_lea and insn_r.Op1.reg == insn.Op2.reg:
+						try:
+							self.uc.emu_start(insn_r.ea, rcx_address)
+						except UcError as e:
+							pass
+
+						self.key_address = self.uc.uc.reg_read(UC_X86_REG_RCX)
+						address_resolved = True
+				break
+
+		if self.key_address == 0:
+			return False
+
+		if self.key_address in self.parsed_keys:
+			set_cmt(start_address, "%s (0x%X)" % (self.parsed_keys[self.key_address][0], self.key_address))
+			if address_resolved:
+				print("Import %s / Key: 0x%X / Address: 0x%X (Type: 2)" % (self.parsed_keys[self.key_address][0], self.key_address, start_address))
+
+			return True
+
+		self.uc.uc.reg_write(UC_X86_REG_RCX, self.key_address)
+
+		try:
+			self.uc.emu_start(start_address, 0)
+		except UcError as e:
+			pass
+
+		if self.key_address in self.parsed_keys:
+			set_cmt(start_address, "%s (0x%X)" % (self.parsed_keys[self.key_address][0], self.key_address))
+
+			set_cmt(self.key_address, "%s (Value: 0x%X)" % (self.parsed_keys[self.key_address][0], self.parsed_keys[self.key_address][1]), False)
+			ida_name.set_name(self.key_address, self.parsed_keys[self.key_address][0], ida_name.SN_NOCHECK | ida_name.SN_NOWARN)
+
+			if address_resolved:
+				print("Import %s / Key: 0x%X / Address: 0x%X (Type: 2)" % (self.parsed_keys[self.key_address][0], self.key_address, start_address))
+			else:
+				print("Import %s / Key: 0x%X (Type: 2)" % (self.parsed_keys[self.key_address][0], self.key_address))
+
+			return True
 
 	def parse(self):
 		self.uc.uc.hook_add(UC_HOOK_CODE, self.hook_code)
@@ -317,17 +396,29 @@ class eac_imports_parser_c(eac_parser_c, symbols_c):
 			insn = ida_ua.insn_t()
 			ida_ua.decode_insn(insn, xref)
 
+			self.key_address = 0
 			self.trace_start_address = 0
 
 			if insn.itype == ida_allins.NN_call:
 				self.parse_call(xref)
-			elif insn.itype == ida_allins.NN_lea:
-				self.parse_lea(xref)
 
 			xref = ida_xref.get_next_cref_to(decryptfn_address, xref)
 
+		xref = ida_xref.get_first_dref_to(decryptfn_address)
+		while xref != ida_idaapi.BADADDR:
+			insn = ida_ua.insn_t()
+			ida_ua.decode_insn(insn, xref)
+
+			self.key_address = 0
+			self.trace_start_address = 0
+
+			if insn.itype == ida_allins.NN_lea:
+				self.parse_lea(xref)
+
+			xref = ida_xref.get_next_dref_to(decryptfn_address, xref)
+
 def main():
-	eac_obffuncs_parser_c()
+	eac_funcs_parser_c()
 	eac_imports_parser_c()
 
 if __name__ == "__main__":
