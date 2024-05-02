@@ -100,8 +100,6 @@ class eac_parser_c:
 
 		self.uc = unicorn_c(self.imagebase, self.imagesize)
 
-		#print("imagesize: 0x%X, imagesize: 0x%X" % (self.imagebase, self.imagesize))
-
 class eac_funcs_parser_c(eac_parser_c):
 	current_fn = 0
 	blocks_count = 0
@@ -109,6 +107,7 @@ class eac_funcs_parser_c(eac_parser_c):
 	cf_handler = 0
 	offset_reg = 0
 	first_block = 0
+	block_xrefs = {}
 	parsed_blocks = []
 
 	def __init__(self):
@@ -157,10 +156,16 @@ class eac_funcs_parser_c(eac_parser_c):
 
 		return child_offsets
 
-	def parse_blocks(self, offsets):
+	def parse_blocks(self, parent_address, offsets):
 		for offset in offsets:
 			address = (self.base_address + offset[1]) & 0xFFFFFFFFFFFFFFFF
 			set_cmt(offset[0], "Jump to 0x%X" % address)
+
+			if parent_address:
+				if address in self.block_xrefs and parent_address not in self.block_xrefs[address]:
+					self.block_xrefs[address].append(parent_address)
+				elif address not in self.block_xrefs:
+					self.block_xrefs[address] = [parent_address]
 
 			if address in self.parsed_blocks:
 				continue
@@ -168,7 +173,7 @@ class eac_funcs_parser_c(eac_parser_c):
 			child_offsets = self.parse_block(address)
 			self.parsed_blocks.append(address)
 
-			self.parse_blocks(child_offsets)
+			self.parse_blocks(address, child_offsets)
 
 	def is_cf_handler(self, address):
 		types = [ida_allins.NN_push, ida_allins.NN_lea, ida_allins.NN_lea, ida_allins.NN_pop, ida_allins.NN_jmpni]
@@ -227,7 +232,6 @@ class eac_funcs_parser_c(eac_parser_c):
 
 			ida_bytes.create_byte(enter_fn, 1, True) 
 			ida_ua.create_insn(enter_fn)
-			#ida_funcs.add_func(enter_fn)
 
 			try:
 				self.uc.emu_start(enter_fn, 0)
@@ -237,10 +241,15 @@ class eac_funcs_parser_c(eac_parser_c):
 			if self.first_block == 0:
 				continue
 
-			self.parse_blocks(self.parse_block(self.first_block))
+			self.parse_blocks(None, self.parse_block(self.first_block))
 
 			set_cmt(enter_fn, "First block: 0x%X (Total: %i)" % (self.first_block, len(self.parsed_blocks)))
 			print("Function 0x%X / First block: 0x%X (Total: %i)" % (enter_fn, self.first_block, len(self.parsed_blocks)))
+
+		for block_address in self.block_xrefs:
+			xrefs = self.block_xrefs[block_address]
+			if xrefs:
+				set_cmt(block_address, "Basic block start / Xrefs: %s" % " ".join("0x%X" % xref for xref in xrefs))
 
 class eac_imports_parser_c(eac_parser_c, symbols_c):
 	parsed_keys = {}
