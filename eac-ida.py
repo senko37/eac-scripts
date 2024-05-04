@@ -90,7 +90,7 @@ class symbols_c:
 
 class eac_parser_c:
 	imagebase, imagesize = 0, 0
-	uc, sym = None, None
+	uc = None
 
 	def __init__(self):
 		last_segment = ida_segment.get_last_seg()
