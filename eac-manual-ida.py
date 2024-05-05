@@ -163,7 +163,7 @@ class eac_parser_manual_c(ida_idaapi.plugin_t):
 
 				for reg in regs:
 					value = self.eac_parser.uc.uc.reg_read(regs[reg])
-					if (value >> 48) == 0xFFFF and not(value >= self.eac_parser.imagebase and value <= self.imagebase + self.eac_parser.imagesize):
+					if (value >> 48) == 0xFFFF and not(value >= self.eac_parser.imagebase and value <= self.eac_parser.imagebase + self.eac_parser.imagesize):
 						symbol = self.symbols.lookup(value)
 						ida_bytes.set_cmt(address_end, "%s (0x%X)" % (symbol, key_address), False)
 						ida_bytes.set_cmt(key_address, "%s (Value: 0x%X)" % (symbol, value), False)
