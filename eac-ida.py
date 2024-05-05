@@ -119,7 +119,7 @@ class eac_funcs_parser_c(eac_parser_c):
 		insns = []
 		child_offsets = []
 
-		set_cmt(address, "Basic block start")
+		set_cmt(address, "Basic block start / Enter: 0x%X" % self.current_fn)
 
 		locked = True
 		address_t = address
@@ -203,6 +203,7 @@ class eac_funcs_parser_c(eac_parser_c):
 				self.first_block = (self.base_address + uc.reg_read(regs_iu[self.offset_reg])) & 0xFFFFFFFFFFFFFFFF
 			else:
 				set_cmt(self.current_fn, "First block: 0x%X (Unknown control flow)" % address)
+				set_cmt(address, "Basic block start / Enter: 0x%X" % self.current_fn)
 				print("Function 0x%X / First block: 0x%X (Unknown control flow)" % (self.current_fn, address))
 
 			uc.reg_write(UC_X86_REG_RIP, 0)
@@ -249,7 +250,7 @@ class eac_funcs_parser_c(eac_parser_c):
 		for block_address in self.block_xrefs:
 			xrefs = self.block_xrefs[block_address]
 			if xrefs:
-				set_cmt(block_address, "Basic block start / Xrefs: %s" % " ".join("0x%X" % xref for xref in xrefs))
+				set_cmt(block_address, "Basic block start / Enter: 0x%X / Xrefs: %s" % (enter_fn, " ".join("0x%X" % xref for xref in xrefs)))
 
 class eac_imports_parser_c(eac_parser_c, symbols_c):
 	parsed_keys = {}
