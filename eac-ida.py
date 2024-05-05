@@ -244,13 +244,13 @@ class eac_funcs_parser_c(eac_parser_c):
 
 			self.parse_blocks(None, self.parse_block(self.first_block))
 
-			set_cmt(enter_fn, "First block: 0x%X (Total: %i)" % (self.first_block, len(self.parsed_blocks)))
-			print("Function 0x%X / First block: 0x%X (Total: %i)" % (enter_fn, self.first_block, len(self.parsed_blocks)))
+			set_cmt(self.current_fn, "First block: 0x%X (Total: %i)" % (self.first_block, len(self.parsed_blocks)))
+			print("Function 0x%X / First block: 0x%X (Total: %i)" % (self.current_fn, self.first_block, len(self.parsed_blocks)))
 
 		for block_address in self.block_xrefs:
 			xrefs = self.block_xrefs[block_address]
 			if xrefs:
-				set_cmt(block_address, "Basic block start / Enter: 0x%X / Xrefs: %s" % (enter_fn, " ".join("0x%X" % xref for xref in xrefs)))
+				set_cmt(block_address, "Basic block start / Enter: 0x%X / Xrefs: %s" % (self.current_fn, " ".join("0x%X" % xref for xref in xrefs)))
 
 class eac_imports_parser_c(eac_parser_c, symbols_c):
 	parsed_keys = {}
