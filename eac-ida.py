@@ -159,6 +159,9 @@ class eac_funcs_parser_c(eac_parser_c):
 	def parse_blocks(self, parent_address, offsets):
 		for offset in offsets:
 			address = (self.base_address + offset[1]) & 0xFFFFFFFFFFFFFFFF
+			if not(address >= self.imagebase and address <= (self.imagebase + self.imagesize))
+				continue
+
 			set_cmt(offset[0], "Jump to 0x%X" % address)
 
 			if parent_address:
