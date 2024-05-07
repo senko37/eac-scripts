@@ -13,12 +13,12 @@ import pdbparse.symlookup
 from unicorn import *
 from unicorn.x86_const import *
 
-ntoskrnl_pdbpath = r"C:\Windows\SYMBOLS\ntkrnlmp.pdb\54C8C67BD2A54FA5BD82F1BE21CF4A3A1\ntkrnlmp.pdb"
-ntoskrnl_imagebase = 0xFFFFF8027EA00000
+ntoskrnl_pdbpath = r"C:\Windows\SYMBOLS\ntkrnlmp.pdb\7AF38CD76BBE27EABD51A523C93EEAAC1\ntkrnlmp.pdb"
+ntoskrnl_imagebase = 0xFFFFF8055F400000
 ntoskrnl_imagesize = 0x01047000
 
 fltmgr_pdbpath = r"C:\Windows\SYMBOLS\fltMgr.pdb\83BB2BA7D753BA4755EA363DD75677321\fltMgr.pdb"
-fltmgr_imagebase = 0xFFFFF80282010000
+fltmgr_imagebase = 0xFFFFF80563E00000
 fltmgr_imagesize = 0x0007A000
 
 decryptfn_address = 0xFFFFF802EA115638
@@ -159,7 +159,7 @@ class eac_funcs_parser_c(eac_parser_c):
 	def parse_blocks(self, parent_address, offsets):
 		for offset in offsets:
 			address = (self.base_address + offset[1]) & 0xFFFFFFFFFFFFFFFF
-			if not(address >= self.imagebase and address <= (self.imagebase + self.imagesize))
+			if not(address >= self.imagebase and address <= (self.imagebase + self.imagesize)):
 				continue
 
 			set_cmt(offset[0], "Jump to 0x%X" % address)
