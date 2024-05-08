@@ -59,9 +59,9 @@ EAC manual parser (setup)
 		})
 		self.Compile()
 
-		self.decrypt_address.value = "0xFFFFF802EA115638"
-		self.ntosbase.value = "0xFFFFF8027EA00000"
-		self.ntospdb.value = r"C:\Windows\SYMBOLS\ntkrnlmp.pdb\54C8C67BD2A54FA5BD82F1BE21CF4A3A1\ntkrnlmp.pdb"
+		self.decrypt_address.value = "0xFFFFF805D59F3758"
+		self.ntosbase.value = "0xFFFFF8055F400000"
+		self.ntospdb.value = r"C:\Windows\SYMBOLS\ntkrnlmp.pdb\7AF38CD76BBE27EABD51A523C93EEAAC1\ntkrnlmp.pdb"
 
 	def Show(self):
 		return self.Execute()

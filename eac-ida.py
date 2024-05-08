@@ -21,7 +21,11 @@ fltmgr_pdbpath = r"C:\Windows\SYMBOLS\fltMgr.pdb\83BB2BA7D753BA4755EA363DD756773
 fltmgr_imagebase = 0xFFFFF80563E00000
 fltmgr_imagesize = 0x0007A000
 
-decryptfn_address = 0xFFFFF802EA115638
+cng_pdbpath = r"C:\Windows\SYMBOLS\cng.pdb\A1FD77265441DB21FB4CC9B565F8477B1\cng.pdb"
+cng_imagebase = 0xFFFFF80564060000
+cng_imagesize = 0x000BE000
+
+decryptfn_address = 0xFFFFF805D59F3758
 
 regs_iu = {
 	idautils.procregs.rax.reg: UC_X86_REG_RAX,
@@ -263,7 +267,10 @@ class eac_imports_parser_c(eac_parser_c, symbols_c):
 
 	def __init__(self):
 		eac_parser_c.__init__(self)
-		symbols_c.__init__(self, [[ntoskrnl_pdbpath, ntoskrnl_imagebase, ntoskrnl_imagesize], [fltmgr_pdbpath, fltmgr_imagebase, fltmgr_imagesize]])
+		symbols_c.__init__(self, [
+			[ntoskrnl_pdbpath, ntoskrnl_imagebase, ntoskrnl_imagesize], 
+			[fltmgr_pdbpath, fltmgr_imagebase, fltmgr_imagesize],
+			[cng_pdbpath, cng_imagebase, cng_imagesize]])
 
 		self.parse()
 
