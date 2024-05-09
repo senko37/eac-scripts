@@ -9,6 +9,7 @@ import ida_name
 import ida_nalt
 import ida_allins
 import idautils
+import string
 import pdbparse.symlookup
 from unicorn import *
 from unicorn.x86_const import *
@@ -26,6 +27,8 @@ cng_imagebase = 0xFFFFF80564060000
 cng_imagesize = 0x000BE000
 
 decryptfn_address = 0xFFFFF805D59F3758
+
+allowed_symbols = string.printable[:-5]
 
 regs_iu = {
 	idautils.procregs.rax.reg: UC_X86_REG_RAX,
@@ -211,7 +214,7 @@ class eac_funcs_parser_c(eac_parser_c):
 			else:
 				set_cmt(self.current_fn, "First block: 0x%X (Unknown control flow)" % address)
 				set_cmt(address, "Basic block start / Enter: 0x%X" % self.current_fn)
-				print("Function 0x%X / First block: 0x%X (Unknown control flow)" % (self.current_fn, address))
+				print("Function: 0x%X / First block: 0x%X (Unknown control flow)" % (self.current_fn, address))
 
 			uc.reg_write(UC_X86_REG_RIP, 0)
 
@@ -252,12 +255,14 @@ class eac_funcs_parser_c(eac_parser_c):
 			self.parse_blocks(None, self.parse_block(self.first_block))
 
 			set_cmt(self.current_fn, "First block: 0x%X (Total: %i)" % (self.first_block, len(self.parsed_blocks)))
-			print("Function 0x%X / First block: 0x%X (Total: %i)" % (self.current_fn, self.first_block, len(self.parsed_blocks)))
+			print("Function: 0x%X / First block: 0x%X (Total: %i)" % (self.current_fn, self.first_block, len(self.parsed_blocks)))
 
 		for block_address in self.block_xrefs:
 			xrefs = self.block_xrefs[block_address]
 			if xrefs:
 				set_cmt(block_address, "Basic block start / Enter: 0x%X / Xrefs: %s" % (self.current_fn, " ".join("0x%X" % xref for xref in xrefs)))
+
+		return True
 
 class eac_imports_parser_c(eac_parser_c, symbols_c):
 	parsed_keys = {}
@@ -320,9 +325,11 @@ class eac_imports_parser_c(eac_parser_c, symbols_c):
 			set_cmt(self.key_address, "%s (Value: 0x%X)" % (self.parsed_keys[self.key_address][0], self.parsed_keys[self.key_address][1]), False)
 			ida_name.set_name(self.key_address, self.parsed_keys[self.key_address][0], ida_name.SN_NOCHECK | ida_name.SN_NOWARN)
 
-			print("Import %s / Key: 0x%X (Type: 1)" % (self.parsed_keys[self.key_address][0], self.key_address))
+			print("Import: %s / Key: 0x%X (Type: 1)" % (self.parsed_keys[self.key_address][0], self.key_address))
 
 			return True
+
+		return False
 
 	def parse_lea(self, address):
 		self.parse_type = 1
@@ -384,7 +391,7 @@ class eac_imports_parser_c(eac_parser_c, symbols_c):
 		if self.key_address in self.parsed_keys:
 			set_cmt(start_address, "%s (0x%X)" % (self.parsed_keys[self.key_address][0], self.key_address))
 			if address_resolved:
-				print("Import %s / Key: 0x%X / Address: 0x%X (Type: 2)" % (self.parsed_keys[self.key_address][0], self.key_address, start_address))
+				print("Import: %s / Key: 0x%X / Address: 0x%X (Type: 2)" % (self.parsed_keys[self.key_address][0], self.key_address, start_address))
 
 			return True
 
@@ -402,11 +409,13 @@ class eac_imports_parser_c(eac_parser_c, symbols_c):
 			ida_name.set_name(self.key_address, self.parsed_keys[self.key_address][0], ida_name.SN_NOCHECK | ida_name.SN_NOWARN)
 
 			if address_resolved:
-				print("Import %s / Key: 0x%X / Address: 0x%X (Type: 2)" % (self.parsed_keys[self.key_address][0], self.key_address, start_address))
+				print("Import %s: / Key: 0x%X / Address: 0x%X (Type: 2)" % (self.parsed_keys[self.key_address][0], self.key_address, start_address))
 			else:
-				print("Import %s / Key: 0x%X (Type: 2)" % (self.parsed_keys[self.key_address][0], self.key_address))
+				print("Import %s: / Key: 0x%X (Type: 2)" % (self.parsed_keys[self.key_address][0], self.key_address))
 
 			return True
+
+		return False
 
 	def parse(self):
 		self.uc.uc.hook_add(UC_HOOK_CODE, self.hook_code)
@@ -437,9 +446,131 @@ class eac_imports_parser_c(eac_parser_c, symbols_c):
 
 			xref = ida_xref.get_next_dref_to(decryptfn_address, xref)
 
+		return True
+
+class eac_strings_parser_c(eac_parser_c):
+	str_address = 0
+	str_counter = 0
+	str_size = 0
+	insn_jmp = None
+
+	def __init__(self):
+		eac_parser_c.__init__(self)
+
+		self.parse()
+
+	def hook_mem_write(self, uc, access, address, size, value, user_data):
+		if self.str_address:
+			return
+
+		address_t = uc.reg_read(UC_X86_REG_RAX)
+		if address >= self.uc.stackbase and address <= (self.uc.stackbase + self.uc.stacksize) and address == address_t:
+			self.str_address = address
+
+	def hook_code(self, uc, address, size, user_data):
+		if address == self.insn_jmp.ea and self.str_counter <= self.str_size:
+			uc.reg_write(UC_X86_REG_RIP, self.insn_jmp.Op1.addr)
+			self.str_counter += 1
+
+	def parse(self):
+		rdata = ida_segment.get_segm_by_name(".rdata")
+		if not rdata:
+			return False
+
+		self.uc.uc.hook_add(UC_HOOK_MEM_WRITE, self.hook_mem_write)
+		self.uc.uc.hook_add(UC_HOOK_CODE, self.hook_code)
+
+		for address in range(rdata.start_ea, rdata.end_ea, 8):
+			xref = ida_xref.get_first_dref_to(address)
+			if xref == ida_idaapi.BADADDR:
+				continue
+
+			insn = ida_ua.insn_t()
+			if ida_ua.decode_insn(insn, xref) == 0 or insn.itype != ida_allins.NN_lea:
+				continue
+
+			func = ida_funcs.get_func(xref)
+			if not func:
+				continue
+
+			basic = ida_gdl.FlowChart(func)
+			if basic.size < 2:
+				continue
+
+			block_first = None
+			for block in basic:
+				if block.end_ea >= xref + 1 and block.start_ea <= xref + 1:
+					block_first = block
+					break
+
+			if not block_first:
+				continue
+
+			block_first_s = list(block_first.succs())
+			if len(block_first_s) != 1:
+				continue
+
+			block_second = block_first_s[0]
+			block_second_p = list(block_second.preds())
+			if len(block_second_p) != 2:
+				continue
+
+			if block_second_p[0].id != block_first.id or block_second_p[1].id != block_second.id:
+				continue
+
+			self.insn_jmp = ida_ua.insn_t()
+			ida_ua.decode_prev_insn(self.insn_jmp, block_second.end_ea)
+
+			insn_cmp = ida_ua.insn_t()
+			ida_ua.decode_prev_insn(insn_cmp, self.insn_jmp.ea)
+			if insn_cmp.itype != ida_allins.NN_cmp:
+				continue
+
+			self.str_size = 512
+			if insn_cmp.Op2.type == ida_ua.o_imm:
+				self.str_size = insn_cmp.Op2.value
+
+			self.str_address = 0
+			self.str_counter = 0
+
+			try:
+				self.uc.emu_start(block_first.start_ea, block_second.end_ea)
+			except UcError as e:
+				pass
+
+			if self.str_address == 0 or self.str_counter == 0:
+				continue
+
+			str_bytes = self.uc.uc.mem_read(self.str_address, self.str_size)
+
+			str_bytes = str_bytes.lstrip(b"\0")
+			if str_bytes[1] == 0:
+				str_bytes = str_bytes[:str_bytes.find(b"\0\0")].replace(b"\0", b"")
+			else:
+				str_bytes = str_bytes[:str_bytes.find(b"\0")]
+
+			str_decoded = str_bytes.decode("ascii", "ignore")
+
+			str_valid = True
+			for c in str_decoded:
+				if c not in allowed_symbols:
+					str_valid = False
+					break
+
+			if str_valid == False:
+				continue
+
+			set_cmt(address, str_decoded, False)
+			ida_name.set_name(address, str_decoded, ida_name.SN_NOCHECK | ida_name.SN_NOWARN)
+
+			print("String: %s / Address: 0x%X" % (str_decoded, address))
+
+		return True
+
 def main():
 	eac_funcs_parser_c()
 	eac_imports_parser_c()
+	eac_strings_parser_c()
 
 if __name__ == "__main__":
 	main()
