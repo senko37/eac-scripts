@@ -157,7 +157,7 @@ class eac_funcs_parser_c(eac_parser_c):
 						insn_r = ida_ua.insn_t()
 						address_r = ida_ua.decode_prev_insn(insn_r, address_r)
 
-						if insn_r.Op1.type == ida_ua.o_reg and insn_r.Op2.type == ida_ua.o_imm and insn_r.Op1.reg == insn.Op2.reg:
+						if insn_r.Op1.type == ida_ua.o_reg and insn_r.Op1.reg == insn.Op2.reg and insn_r.Op2.type == ida_ua.o_imm:
 							child_offsets.append([insn.ea, insn_r.Op2.value])
 							break
 
@@ -173,9 +173,9 @@ class eac_funcs_parser_c(eac_parser_c):
 
 			if parent_address:
 				if address in self.block_xrefs and parent_address not in self.block_xrefs[address]:
-					self.block_xrefs[address].append(parent_address)
+					self.block_xrefs[address][1].append(parent_address)
 				elif address not in self.block_xrefs:
-					self.block_xrefs[address] = [parent_address]
+					self.block_xrefs[address] = [self.current_fn, [parent_address]]
 
 			if address in self.parsed_blocks:
 				continue
@@ -258,9 +258,10 @@ class eac_funcs_parser_c(eac_parser_c):
 			print("Function: 0x%X / First block: 0x%X (Total: %i)" % (self.current_fn, self.first_block, len(self.parsed_blocks)))
 
 		for block_address in self.block_xrefs:
-			xrefs = self.block_xrefs[block_address]
+			enter_fn = self.block_xrefs[block_address][0]
+			xrefs = self.block_xrefs[block_address][1]
 			if xrefs:
-				set_cmt(block_address, "Basic block start / Enter: 0x%X / Xrefs: %s" % (self.current_fn, " ".join("0x%X" % xref for xref in xrefs)))
+				set_cmt(block_address, "Basic block start / Enter: 0x%X / Xrefs: %s" % (enter_fn, " ".join("0x%X" % xref for xref in xrefs)))
 
 		return True
 
