@@ -153,7 +153,7 @@ class eac_funcs_parser_c(eac_parser_c):
 					child_offsets.append([insn.ea, insn.Op2.value])
 				elif insn.Op2.type == ida_ua.o_reg:
 					address_r = insn.ea
-					for _ in range(10):
+					for _ in range(len(insns)):
 						insn_r = ida_ua.insn_t()
 						address_r = ida_ua.decode_prev_insn(insn_r, address_r)
 
