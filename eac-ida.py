@@ -128,7 +128,6 @@ class eac_funcs_parser_c(eac_parser_c):
 
 		set_cmt(address, "Basic block start / Enter: 0x%X" % self.current_fn)
 
-		locked = True
 		address_t = address
 		while True:
 			insn = ida_ua.insn_t()
@@ -136,11 +135,6 @@ class eac_funcs_parser_c(eac_parser_c):
 			if size == 0:
 				return []
 			address_t += size
-
-			if insn.itype == ida_allins.NN_push and insn.Op1.reg == self.offset_reg:
-				locked = False
-			if locked:
-				continue
 
 			insns.append(insn)
 			if insn.itype == ida_allins.NN_jmp or insn.itype == ida_allins.NN_retn:
