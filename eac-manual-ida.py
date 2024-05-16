@@ -341,8 +341,6 @@ class eac_funcs_parser_c(ida_idaapi.plugin_t):
 		encoding = ida_nalt.get_default_encoding_idx(ida_nalt.BPU_1B)
 		ida_bytes.parse_binpat_str(enter_fn_pattern, self.imagebase, "51 48 8D 0D 00 00 00 00 48 81 C1 ? ? ? ? 48 89 4C 24 ? 59 EB FF", 16, encoding)
 
-		self.uc.uc.hook_add(UC_HOOK_BLOCK, self.hook_block)
-
 		enter_fn, _ = ida_bytes.bin_search3(ida_kernwin.get_screen_ea(), self.imagebase + self.imagesize, enter_fn_pattern, ida_bytes.BIN_SEARCH_FORWARD)
 		if enter_fn == ida_idaapi.BADADDR:
 			return False
@@ -353,6 +351,8 @@ class eac_funcs_parser_c(ida_idaapi.plugin_t):
 		self.cf_handler = 0
 		self.offset_reg = 0
 		self.first_block = 0
+		self.block_xrefs = {}
+		self.block_paths = {}
 		self.parsed_blocks = []
 
 		ida_bytes.create_byte(enter_fn, 1, True) 
@@ -417,6 +417,7 @@ class eac_funcs_parser_c(ida_idaapi.plugin_t):
 			self.parse()
 		else:
 			eac_parser_c.__init__(self)
+			self.uc.uc.hook_add(UC_HOOK_BLOCK, self.hook_block)
 
 			self.inited = True
 			return self.run(arg)
