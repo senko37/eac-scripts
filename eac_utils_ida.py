@@ -155,8 +155,8 @@ class eac_parser_c:
 class eac_parser_manual_c(ida_idaapi.plugin_t):
 	comment = ""
 	help = ""
-	wanted_name = "EAC manual parser"
-	wanted_hotkey = "Ctrl-Shift-E"
+	wanted_name = "EAC manual decrypt"
+	wanted_hotkey = "Ctrl-Shift-2"
 	flags = ida_idaapi.PLUGIN_KEEP
 
 	inited = False
@@ -215,11 +215,11 @@ class eac_parser_manual_c(ida_idaapi.plugin_t):
 				self.inited = True
 				return self.run(arg)
 
-class eac_funcs_parser_c(ida_idaapi.plugin_t):
+class eac_cf_parser_c(ida_idaapi.plugin_t):
 	comment = ""
 	help = ""
-	wanted_name = "EAC manual parser"
-	wanted_hotkey = "Ctrl-Shift-E"
+	wanted_name = "EAC manual control flow parser"
+	wanted_hotkey = "Ctrl-Shift-1"
 	flags = ida_idaapi.PLUGIN_KEEP
 
 	inited = False
@@ -421,6 +421,3 @@ class eac_funcs_parser_c(ida_idaapi.plugin_t):
 
 			self.inited = True
 			return self.run(arg)
-
-def PLUGIN_ENTRY():
-	return eac_funcs_parser_c()
