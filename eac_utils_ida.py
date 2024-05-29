@@ -2,6 +2,7 @@ import ida_idaapi
 import ida_ua
 import ida_name
 import ida_bytes
+import ida_funcs
 import ida_segment
 import ida_nalt
 import ida_kernwin
@@ -567,6 +568,8 @@ class eac_cf_deobfuscator_c(ida_idaapi.plugin_t):
 		self.parse_blocks(self.first_block, child_offsets, handler_jmp)
 
 		for block_address in self.block_paths:
+			ida_funcs.add_func(block_address)
+
 			handler_jmp_ea = self.block_paths[block_address][0]
 
 			patched_jmp = self.ks.asm("jmp %s" % self.offset_reg[1])[0]
@@ -575,7 +578,7 @@ class eac_cf_deobfuscator_c(ida_idaapi.plugin_t):
 
 			paths = self.block_paths[block_address][1]
 			for path in paths:
-				patched_mov = self.ks.asm("mov %s, 0x%x" % (self.offset_reg[1], path[0]))[0]
+				patched_mov = self.ks.asm("mov %s, 0x%x" % (ida_lines.tag_remove(ida_ua.print_operand(path[1], 0)), path[0]))[0]
 				patched_mov += [0x90] * (ida_bytes.get_item_size(path[1]) - len(patched_mov))
 				ida_bytes.patch_bytes(path[1], bytes(patched_mov))
 
