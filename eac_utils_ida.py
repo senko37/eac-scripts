@@ -128,7 +128,7 @@ class keystone_c:
 		self.ks = Ks(KS_ARCH_X86, KS_MODE_64)
 
 	def asm(self, code):
-		return bytes(ks.asm(code.encode()))
+		return ks.asm(code.encode())
 
 class symbols_c:
 	syms = []
@@ -483,7 +483,7 @@ class eac_cf_deobfuscator_c(ida_idaapi.plugin_t):
 						address_r = ida_ua.decode_prev_insn(insn_r, address_r)
 
 						if insn_r.Op1.type == ida_ua.o_reg and insn_r.Op1.reg == insn.Op2.reg and insn_r.Op2.type == ida_ua.o_imm:
-							child_offsets.append([insn.ea, insn_r.Op2.value, insn_r.ea])
+							child_offsets.append([insn_r.ea, insn_r.Op2.value])
 							break
 			elif insn.Op1.addr == self.cf_handler:
 				handler_jmp = insn.ea
@@ -497,9 +497,9 @@ class eac_cf_deobfuscator_c(ida_idaapi.plugin_t):
 				continue
 
 			if parent_address in self.block_paths:
-				self.block_paths[parent_address][1].append([address, offset[1]])
+				self.block_paths[parent_address][1].append([address, offset[0]])
 			else:
-				self.block_paths[parent_address] = [handler_ea, [[address, offset[1]]]]
+				self.block_paths[parent_address] = [handler_ea, [[address, offset[0]]]]
 
 			if address in self.parsed_blocks:
 				continue
@@ -528,9 +528,6 @@ class eac_cf_deobfuscator_c(ida_idaapi.plugin_t):
 		return True
 
 	def hook_block(self, uc, address, size, user_data):
-		ida_bytes.create_byte(address, 1, True) 
-		ida_ua.create_insn(address)
-
 		if self.blocks_count == 3:
 			if self.is_cf_handler(address):
 				self.cf_handler = address
@@ -558,9 +555,6 @@ class eac_cf_deobfuscator_c(ida_idaapi.plugin_t):
 		self.block_paths = {}
 		self.parsed_blocks = []
 
-		ida_bytes.create_byte(enter_fn, 1, True) 
-		ida_ua.create_insn(enter_fn)
-
 		try:
 			self.uc.emu_start(enter_fn, 0)
 		except UcError as e:
@@ -569,7 +563,7 @@ class eac_cf_deobfuscator_c(ida_idaapi.plugin_t):
 		if self.first_block == 0:
 			return False
 
-		child_offsets, handler_jmp = self.parse_block(address)
+		child_offsets, handler_jmp = self.parse_block(self.first_block)
 		self.parse_blocks(self.first_block, child_offsets, handler_jmp)
 
 		for block_address in self.block_paths:
@@ -577,12 +571,13 @@ class eac_cf_deobfuscator_c(ida_idaapi.plugin_t):
 
 			patched_jmp = self.ks.asm("jmp %s" % self.offset_reg[1])[0]
 			patched_jmp += [0x90] * (ida_bytes.get_item_size(handler_jmp_ea) - len(patched_jmp))
-			ida_bytes.patch_bytes(handler_jmp_ea, patched_jmp)
+			ida_bytes.patch_bytes(handler_jmp_ea, bytes(patched_jmp))
 
 			paths = self.block_paths[block_address][1]
 			for path in paths:
-				patched_mov = self.ks.asm("mov %s, 0x%x" % path[0])[0]
-				ida_bytes.patch_bytes(path[1], patched_mov)
+				patched_mov = self.ks.asm("mov %s, 0x%x" % (self.offset_reg[1], path[0]))[0]
+				patched_mov += [0x90] * (ida_bytes.get_item_size(path[1]) - len(patched_mov))
+				ida_bytes.patch_bytes(path[1], bytes(patched_mov))
 
 			ida_kernwin.msg("Patched basic block at 0x%X\n" % block_address)
 
