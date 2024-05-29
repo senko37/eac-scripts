@@ -7,10 +7,11 @@ import ida_nalt
 import ida_kernwin
 import ida_allins
 import ida_diskio
-import idautils
+import ida_lines
 import pdbparse.symlookup
 from unicorn import *
 from unicorn.x86_const import *
+from keystone import *
 import subprocess
 
 wingraph_template = "graph: {\ntitle: \"%s\"\n%s\n%s\n}"
@@ -119,6 +120,15 @@ class unicorn_c:
 	def emu_start(self, address_start, address_end):
 		self.restore_sp()
 		self.uc.emu_start(address_start, address_end)
+
+class keystone_c:
+	ks = None
+
+	def __init__(self):
+		self.ks = Ks(KS_ARCH_X86, KS_MODE_64)
+
+	def asm(self, code):
+		return bytes(ks.asm(code.encode()))
 
 class symbols_c:
 	syms = []
@@ -416,6 +426,173 @@ class eac_cf_parser_c(ida_idaapi.plugin_t):
 		if self.inited:
 			self.parse()
 		else:
+			eac_parser_c.__init__(self)
+			self.uc.uc.hook_add(UC_HOOK_BLOCK, self.hook_block)
+
+			self.inited = True
+			return self.run(arg)
+
+class eac_cf_deobfuscator_c(ida_idaapi.plugin_t):
+	comment = ""
+	help = ""
+	wanted_name = "EAC manual control flow deobfuscator (WIP)"
+	wanted_hotkey = "Ctrl-Shift-3"
+	flags = ida_idaapi.PLUGIN_KEEP
+
+	inited = False
+	current_fn = 0
+	blocks_count = 0
+	base_address = 0
+	cf_handler = 0
+	first_block = 0
+	offset_reg = ()
+	block_paths = {}
+	parsed_blocks = []
+
+	def init(self):
+		return self.flags
+
+	def term(self):
+		pass
+
+	def parse_block(self, address):
+		insns = []
+		child_offsets = []
+
+		address_t = address
+		while True:
+			insn = ida_ua.insn_t()
+			size = ida_ua.decode_insn(insn, address_t)
+			if size == 0:
+				return []
+			address_t += size
+
+			insns.append(insn)
+			if insn.itype == ida_allins.NN_jmp or insn.itype == ida_allins.NN_retn:
+				break
+			
+		handler_jmp = 0
+		for insn in reversed(insns):
+			if insn.Op1.type == ida_ua.o_reg and insn.Op1.reg == self.offset_reg[0]:
+				if insn.Op2.type == ida_ua.o_imm:
+					child_offsets.append([insn.ea, insn.Op2.value])
+				elif insn.Op2.type == ida_ua.o_reg:
+					address_r = insn.ea
+					for _ in range(len(insns)):
+						insn_r = ida_ua.insn_t()
+						address_r = ida_ua.decode_prev_insn(insn_r, address_r)
+
+						if insn_r.Op1.type == ida_ua.o_reg and insn_r.Op1.reg == insn.Op2.reg and insn_r.Op2.type == ida_ua.o_imm:
+							child_offsets.append([insn.ea, insn_r.Op2.value, insn_r.ea])
+							break
+			elif insn.Op1.addr == self.cf_handler:
+				handler_jmp = insn.ea
+
+		return child_offsets, handler_jmp
+
+	def parse_blocks(self, parent_address, offsets, handler_ea):
+		for offset in offsets:
+			address = (self.base_address + offset[1]) & 0xFFFFFFFFFFFFFFFF
+			if not(address >= self.imagebase and address <= (self.imagebase + self.imagesize)):
+				continue
+
+			if parent_address in self.block_paths:
+				self.block_paths[parent_address][1].append([address, offset[1]])
+			else:
+				self.block_paths[parent_address] = [handler_ea, [[address, offset[1]]]]
+
+			if address in self.parsed_blocks:
+				continue
+
+			child_offsets, handler_jmp = self.parse_block(address)
+			self.parsed_blocks.append(address)
+
+			self.parse_blocks(address, child_offsets, handler_jmp)
+
+	def is_cf_handler(self, address):
+		types = [ida_allins.NN_push, ida_allins.NN_lea, ida_allins.NN_lea, ida_allins.NN_pop, ida_allins.NN_jmpni]
+
+		for i in range(len(types)):
+			insn = ida_ua.insn_t()
+			size = ida_ua.decode_insn(insn, address)
+			if size == 0 or types[i] != insn.itype:
+				return False
+
+			if i == 1:
+				self.base_address = insn.Op2.addr
+			elif i == 4:
+				self.offset_reg = (insn.Op1.reg, ida_lines.tag_remove(ida_ua.print_operand(insn.ea, 0)))
+
+			address += size
+
+		return True
+
+	def hook_block(self, uc, address, size, user_data):
+		ida_bytes.create_byte(address, 1, True) 
+		ida_ua.create_insn(address)
+
+		if self.blocks_count == 3:
+			if self.is_cf_handler(address):
+				self.cf_handler = address
+				self.first_block = (self.base_address + uc.reg_read(regs_iu[self.offset_reg[0]])) & 0xFFFFFFFFFFFFFFFF
+
+			uc.reg_write(UC_X86_REG_RIP, 0)
+
+		self.blocks_count += 1
+
+	def parse(self):
+		enter_fn_pattern = ida_bytes.compiled_binpat_vec_t()
+		encoding = ida_nalt.get_default_encoding_idx(ida_nalt.BPU_1B)
+		ida_bytes.parse_binpat_str(enter_fn_pattern, self.imagebase, "51 48 8D 0D 00 00 00 00 48 81 C1 ? ? ? ? 48 89 4C 24 ? 59 EB FF", 16, encoding)
+
+		enter_fn, _ = ida_bytes.bin_search3(ida_kernwin.get_screen_ea(), self.imagebase + self.imagesize, enter_fn_pattern, ida_bytes.BIN_SEARCH_FORWARD)
+		if enter_fn == ida_idaapi.BADADDR:
+			return False
+
+		self.current_fn = enter_fn
+		self.blocks_count = 0
+		self.base_address = 0
+		self.cf_handler = 0
+		self.first_block = 0
+		self.offset_reg = ()
+		self.block_paths = {}
+		self.parsed_blocks = []
+
+		ida_bytes.create_byte(enter_fn, 1, True) 
+		ida_ua.create_insn(enter_fn)
+
+		try:
+			self.uc.emu_start(enter_fn, 0)
+		except UcError as e:
+			pass
+
+		if self.first_block == 0:
+			return False
+
+		child_offsets, handler_jmp = self.parse_block(address)
+		self.parse_blocks(self.first_block, child_offsets, handler_jmp)
+
+		for block_address in self.block_paths:
+			handler_jmp_ea = self.block_paths[block_address][0]
+
+			patched_jmp = self.ks.asm("jmp %s" % self.offset_reg[1])[0]
+			patched_jmp += [0x90] * (ida_bytes.get_item_size(handler_jmp_ea) - len(patched_jmp))
+			ida_bytes.patch_bytes(handler_jmp_ea, patched_jmp)
+
+			paths = self.block_paths[block_address][1]
+			for path in paths:
+				patched_mov = self.ks.asm("mov %s, 0x%x" % path[0])[0]
+				ida_bytes.patch_bytes(path[1], patched_mov)
+
+			ida_kernwin.msg("Patched basic block at 0x%X\n" % block_address)
+
+		return True
+
+	def run(self, arg):
+		if self.inited:
+			self.parse()
+		else:
+			keystone_c.__init__(self)
 			eac_parser_c.__init__(self)
 			self.uc.uc.hook_add(UC_HOOK_BLOCK, self.hook_block)
 

@@ -254,6 +254,7 @@ class eac_funcs_parser_c(eac_parser_c):
 		for block_address in self.block_xrefs:
 			enter_fn = self.block_xrefs[block_address][0]
 			xrefs = self.block_xrefs[block_address][1]
+			  
 			if xrefs:
 				set_cmt(block_address, "Basic block start / Enter: 0x%X / Xrefs: %s" % (enter_fn, " ".join("0x%X" % xref for xref in xrefs)))
 
