@@ -14,19 +14,19 @@ import pdbparse.symlookup
 from unicorn import *
 from unicorn.x86_const import *
 
-ntoskrnl_pdbpath = r"C:\Windows\SYMBOLS\ntkrnlmp.pdb\7AF38CD76BBE27EABD51A523C93EEAAC1\ntkrnlmp.pdb"
-ntoskrnl_imagebase = 0xFFFFF8055F400000
+ntoskrnl_pdbpath = r"C:\Windows\SYMBOLS\ntkrnlmp.pdb\25402BA3E80493C7AD61CFE71292FE061\ntkrnlmp.pdb"
+ntoskrnl_imagebase = 0xFFFFF8023D000000
 ntoskrnl_imagesize = 0x01047000
 
-fltmgr_pdbpath = r"C:\Windows\SYMBOLS\fltMgr.pdb\83BB2BA7D753BA4755EA363DD75677321\fltMgr.pdb"
-fltmgr_imagebase = 0xFFFFF80563E00000
+fltmgr_pdbpath = r"C:\Windows\SYMBOLS\fltMgr.pdb\5EF09FCA1A5196C35EDD1D0DD67D0C8E1\fltMgr.pdb"
+fltmgr_imagebase = 0xFFFFF8023CB80000
 fltmgr_imagesize = 0x0007A000
 
 cng_pdbpath = r"C:\Windows\SYMBOLS\cng.pdb\A1FD77265441DB21FB4CC9B565F8477B1\cng.pdb"
-cng_imagebase = 0xFFFFF80564060000
+cng_imagebase = 0xFFFFF80242300000
 cng_imagesize = 0x000BE000
 
-decryptfn_address = 0xFFFFF805D59F3758
+decryptfn_address = 0xFFFFF802630CAAA8
 
 allowed_symbols = string.printable[:-5]
 
@@ -405,9 +405,9 @@ class eac_imports_parser_c(eac_parser_c, symbols_c):
 			ida_name.set_name(self.key_address, self.parsed_keys[self.key_address][0], ida_name.SN_NOCHECK | ida_name.SN_NOWARN)
 
 			if address_resolved:
-				print("Import %s: / Key: 0x%X / Address: 0x%X (Type: 2)" % (self.parsed_keys[self.key_address][0], self.key_address, start_address))
+				print("Import: %s / Key: 0x%X / Address: 0x%X (Type: 2)" % (self.parsed_keys[self.key_address][0], self.key_address, start_address))
 			else:
-				print("Import %s: / Key: 0x%X (Type: 2)" % (self.parsed_keys[self.key_address][0], self.key_address))
+				print("Import: %s: / Key: 0x%X (Type: 2)" % (self.parsed_keys[self.key_address][0], self.key_address))
 
 			return True
 
