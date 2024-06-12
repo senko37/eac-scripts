@@ -15,18 +15,18 @@ from unicorn import *
 from unicorn.x86_const import *
 
 ntoskrnl_pdbpath = r"C:\Windows\SYMBOLS\ntkrnlmp.pdb\25402BA3E80493C7AD61CFE71292FE061\ntkrnlmp.pdb"
-ntoskrnl_imagebase = 0xFFFFF8023D000000
-ntoskrnl_imagesize = 0x01047000
+ntoskrnl_imagebase = 0xfffff80222600000
+ntoskrnl_imagesize = 0x1047000
 
 fltmgr_pdbpath = r"C:\Windows\SYMBOLS\fltMgr.pdb\5EF09FCA1A5196C35EDD1D0DD67D0C8E1\fltMgr.pdb"
-fltmgr_imagebase = 0xFFFFF8023CB80000
-fltmgr_imagesize = 0x0007A000
+fltmgr_imagebase = 0xfffff80223df0000
+fltmgr_imagesize = 0x7a000
 
 cng_pdbpath = r"C:\Windows\SYMBOLS\cng.pdb\A1FD77265441DB21FB4CC9B565F8477B1\cng.pdb"
-cng_imagebase = 0xFFFFF80242300000
-cng_imagesize = 0x000BE000
+cng_imagebase = 0xfffff80224050000
+cng_imagesize = 0xbe000
 
-decryptfn_address = 0xFFFFF802630CAAA8
+decryptfn_address = 0xFFFFF8024D087750
 
 allowed_symbols = string.printable[:-5]
 
@@ -564,7 +564,8 @@ class eac_strings_parser_c(eac_parser_c):
 		return True
 
 def main():
-	eac_funcs_parser_c()
+	for _ in range(10):
+		eac_funcs_parser_c()
 	eac_imports_parser_c()
 	eac_strings_parser_c()
 
