@@ -578,7 +578,8 @@ class eac_cf_deobfuscator_c(ida_idaapi.plugin_t):
 
 			paths = self.block_paths[block_address][1]
 			for path in paths:
-				patched_mov = self.ks.asm("mov %s, 0x%x" % (ida_lines.tag_remove(ida_ua.print_operand(path[1], 0)), path[0]))[0]
+				dest = path[0] - path[1] - 7
+				patched_mov = self.ks.asm("lea %s, [rip %s 0x%x]" % (ida_lines.tag_remove(ida_ua.print_operand(path[1], 0)), "+" if dest >= 0 else "-", abs(dest)))[0]
 				patched_mov += [0x90] * (ida_bytes.get_item_size(path[1]) - len(patched_mov))
 				ida_bytes.patch_bytes(path[1], bytes(patched_mov))
 
