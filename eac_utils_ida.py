@@ -203,14 +203,21 @@ class eac_parser_manual_c(ida_idaapi.plugin_t):
 				except UcError as e:
 					pass
 
+				value = 0
+				symbol = ""
+
 				for reg in regs:
 					value = self.eac_parser.uc.uc.reg_read(regs[reg])
 					if (value >> 48) == 0xFFFF and not(value >= self.eac_parser.imagebase and value <= self.eac_parser.imagebase + self.eac_parser.imagesize):
-						symbol = self.symbols.lookup(value)
-						set_cmt(address_end, "%s (0x%X)" % (symbol, key_address))
-						set_cmt(key_address, "%s (Value: 0x%X)" % (symbol, value), False)
-						ida_name.set_name(key_address, symbol, ida_name.SN_NOCHECK | ida_name.SN_NOWARN)
+						symbol_t = self.symbols.lookup(value)
+						if symbol == "" or symbol.startswith("Unknown"):
+							symbol = symbol_t
+
 						ida_kernwin.msg("%s: 0x%X (%s)\n" % (reg, value, symbol))
+
+				set_cmt(address_end, "%s (0x%X)" % (symbol, key_address))
+				set_cmt(key_address, "%s (Value: 0x%X)" % (symbol, value), False)
+				ida_name.set_name(key_address, symbol, ida_name.SN_NOCHECK | ida_name.SN_NOWARN)
 
 				ida_kernwin.msg("Key: 0x%X / Address: 0x%X\n" % (key_address, address_start))
 		else:
